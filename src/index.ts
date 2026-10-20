@@ -138,6 +138,11 @@ export class MyDurableObject extends DurableObject<Env> {
 				const publicState = {
 					life: Number.isFinite(rawState.life) ? rawState.life : 0,
 					handCount: Number.isInteger(rawState.handCount) && rawState.handCount >= 0 ? rawState.handCount : 0,
+					handIds: Array.isArray(rawState.handIds) ? rawState.handIds.filter((id): id is string => typeof id === "string").slice(0, 9) : [],
+					energyPool: Number.isFinite(rawState.energyPool) ? rawState.energyPool : 0,
+					mulliganCount: Number.isInteger(rawState.mulliganCount) && rawState.mulliganCount >= 0 ? Math.min(rawState.mulliganCount, 100) : 0,
+					mulliganDone: rawState.mulliganDone === true,
+					phase: rawState.phase === "playing" ? "playing" : "mulligan",
 					deckCount: Number.isInteger(rawState.deckCount) && rawState.deckCount >= 0 ? rawState.deckCount : 0,
 					deckCounters: Number.isFinite(rawState.deckCounters) ? rawState.deckCounters : 0,
 					deckHorizontal: rawState.deckHorizontal === true,
