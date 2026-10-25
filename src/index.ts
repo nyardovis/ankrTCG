@@ -8,6 +8,7 @@ export class MyDurableObject extends DurableObject<Env> {
 	private reconnectingPlayers = new Set<string>();
 	private intentionalClosures = new Set<WebSocket>();
 	private rematchRequests = new Set<string>();
+	private finishedWinner: string | null = null;
 	private turnPlayer = "player1";
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -24,12 +25,14 @@ export class MyDurableObject extends DurableObject<Env> {
 			playerNames?: Record<string, string>;
 			sessionSeats?: Record<string, string>;
 			turnPlayer?: string;
+			finishedWinner?: string;
 		}>("roomState");
 		if (savedRoom) {
 			for (const [id, state] of Object.entries(savedRoom.publicStates || {})) this.publicStates.set(id, state);
 			for (const [id, name] of Object.entries(savedRoom.playerNames || {})) this.playerNames.set(id, name);
 			for (const [sessionId, id] of Object.entries(savedRoom.sessionSeats || {})) this.sessionSeats.set(sessionId, id);
 			if (savedRoom.turnPlayer === "player1" || savedRoom.turnPlayer === "player2") this.turnPlayer = savedRoom.turnPlayer;
+			if (savedRoom.finishedWinner === "player1" || savedRoom.finishedWinner === "player2") this.finishedWinner = savedRoom.finishedWinner;
 		}
 
 		const pair = new WebSocketPair();
@@ -121,6 +124,7 @@ export class MyDurableObject extends DurableObject<Env> {
 					return;
 				}
 				const winner = playerId === "player1" ? "player2" : "player1";
+				this.finishedWinner = winner;
 				const result = JSON.stringify({type:"game_finished",winner,loser:playerId,reason:"surrender"});
 				for (const [socket] of this.sockets) if (socket.readyState === WebSocket.OPEN) socket.send(result);
 				return;
@@ -128,7 +132,7 @@ export class MyDurableObject extends DurableObject<Env> {
 
 			if (operation.action === "leave_room") {
 				const opponentConnected = [...this.sockets.values()].some(id => id !== playerId);
-				const winner = opponentConnected ? (playerId === "player1" ? "player2" : "player1") : undefined;
+				const winner = this.finishedWinner || (opponentConnected ? (playerId === "player1" ? "player2" : "player1") : undefined);
 				await this.dissolveRoom(playerId, "leave", winner);
 				return;
 			}
@@ -144,12 +148,14 @@ export class MyDurableObject extends DurableObject<Env> {
 				if (this.rematchRequests.has("player1") && this.rematchRequests.has("player2")) {
 					this.rematchRequests.clear();
 					this.publicStates.clear();
+					this.finishedWinner = null;
 					this.turnPlayer = "player1";
 					await this.ctx.storage.put("roomState", {
 						publicStates: {},
 						playerNames: Object.fromEntries(this.playerNames),
 						sessionSeats: Object.fromEntries(this.sessionSeats),
 						turnPlayer: this.turnPlayer,
+						finishedWinner: this.finishedWinner,
 					});
 					for (const [socket] of this.sockets) if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:"rematch_start"}));
 				}
@@ -197,11 +203,16 @@ export class MyDurableObject extends DurableObject<Env> {
 				// A public state is always stored under the authenticated sender's player ID.
 				// The client can never choose which player's state to overwrite.
 				this.publicStates.set(playerId, publicState);
+				if (rawState.gameOver && typeof rawState.gameOver === "object") {
+					const winnerLocal = (rawState.gameOver as Record<string, unknown>).winner;
+					this.finishedWinner = winnerLocal === 1 ? (playerId === "player1" ? "player2" : "player1") : playerId;
+				}
 				await this.ctx.storage.put("roomState", {
 					publicStates: Object.fromEntries(this.publicStates),
 					playerNames: Object.fromEntries(this.playerNames),
 					sessionSeats: Object.fromEntries(this.sessionSeats),
 					turnPlayer: this.turnPlayer,
+					finishedWinner: this.finishedWinner,
 				});
 				const update = JSON.stringify({type:"public_state",playerId,state:publicState});
 				for (const [socket] of this.sockets) {
@@ -311,7 +322,7 @@ export class MyDurableObject extends DurableObject<Env> {
 				return;
 			}
 			const opponentConnected = this.sockets.size > 0;
-			const winner = opponentConnected ? (playerId === "player1" ? "player2" : "player1") : undefined;
+			const winner = this.finishedWinner || (opponentConnected ? (playerId === "player1" ? "player2" : "player1") : undefined);
 			await this.dissolveRoom(playerId, "disconnect", winner);
 		});
 
@@ -331,6 +342,7 @@ export class MyDurableObject extends DurableObject<Env> {
 		this.reconnectingPlayers.clear();
 		this.rematchRequests.clear();
 		this.turnPlayer = "player1";
+		this.finishedWinner = null;
 		await this.ctx.storage.delete("roomState");
 	}
 
