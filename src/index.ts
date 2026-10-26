@@ -130,6 +130,11 @@ export class MyDurableObject extends DurableObject<Env> {
 				return;
 			}
 
+			if (operation.action === "cancel_wait") {
+				await this.dissolveRoom(playerId, "cancel_wait");
+				return;
+			}
+
 			if (operation.action === "leave_room") {
 				const opponentConnected = [...this.sockets.values()].some(id => id !== playerId);
 				const winner = this.finishedWinner || (opponentConnected ? (playerId === "player1" ? "player2" : "player1") : undefined);
