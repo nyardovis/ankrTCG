@@ -186,6 +186,17 @@ export class MyDurableObject extends DurableObject<Env> {
 							counters: Number.isFinite(c.counters) ? c.counters : 0,
 							damage: Number.isFinite(c.damage) ? c.damage : 0,
 							modification: Number.isFinite(c.modification) ? c.modification : 0,
+							cannotBeAttacked: c.cannotBeAttacked === true,
+							cannotBeAttackedWhileUntapped: c.cannotBeAttackedWhileUntapped === true,
+							cannotAttack: c.cannotAttack === true,
+							mustBeAttacked: c.mustBeAttacked === true,
+							cannotBeChosenByOpponent: c.cannotBeChosenByOpponent === true,
+							effectsDisabled: c.effectsDisabled === true,
+							combatPowerUsesOpponent: c.combatPowerUsesOpponent === true,
+							combatPowerOverride: Number.isFinite(c.combatPowerOverride) ? c.combatPowerOverride : null,
+							attacksPerTurn: Number.isFinite(c.attacksPerTurn) ? c.attacksPerTurn : null,
+							cannotAttackUntilTurnEnd: c.cannotAttackUntilTurnEnd === true,
+							cannotAttackUntilPlayerTurnEnd: Number.isInteger(c.cannotAttackUntilPlayerTurnEnd) ? c.cannotAttackUntilPlayerTurnEnd : null,
 						};
 					})
 					: [];
