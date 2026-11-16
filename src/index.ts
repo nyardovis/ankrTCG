@@ -204,11 +204,11 @@ export class MyDurableObject extends DurableObject<Env> {
 					: [];
 				const publicState = {
 					life: Number.isFinite(rawState.life) ? rawState.life : 0,
-					handCount: Number.isInteger(rawState.handCount) && rawState.handCount >= 0 ? rawState.handCount : 0,
-					deckCount: Number.isInteger(rawState.deckCount) && rawState.deckCount >= 0 ? rawState.deckCount : 0,
+					handCount: typeof rawState.handCount === "number" && Number.isInteger(rawState.handCount) && rawState.handCount >= 0 ? rawState.handCount : 0,
+					deckCount: typeof rawState.deckCount === "number" && Number.isInteger(rawState.deckCount) && rawState.deckCount >= 0 ? rawState.deckCount : 0,
 					deckCounters: Number.isFinite(rawState.deckCounters) ? rawState.deckCounters : 0,
 					deckHorizontal: rawState.deckHorizontal === true,
-					facedownCount: Number.isInteger(rawState.facedownCount) && rawState.facedownCount >= 0 ? rawState.facedownCount : 0,
+					facedownCount: typeof rawState.facedownCount === "number" && Number.isInteger(rawState.facedownCount) && rawState.facedownCount >= 0 ? rawState.facedownCount : 0,
 					revealedHand: sanitizeCards(rawState.revealedHand).filter((card: {revealed?: boolean}) => card.revealed === true),
 					facedownPublic: sanitizeCards(rawState.facedownPublic).filter((card: {faceUp?: boolean}) => card.faceUp === true),
 					monsters: sanitizeCards(rawState.monsters),
@@ -293,7 +293,8 @@ export class MyDurableObject extends DurableObject<Env> {
 			}
 
 			if (operation.action === "log") {
-				const text = typeof (message as {text?: unknown}).text === "string" ? (message as {text:string}).text.slice(0,200) : "";
+				const textValue = (message as Record<string, unknown>).text;
+				const text = typeof textValue === "string" ? textValue.slice(0,200) : "";
 				if (!text) {
 					server.send(JSON.stringify({type:"error",message:"Log text is required"}));
 					return;
