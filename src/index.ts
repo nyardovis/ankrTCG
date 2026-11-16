@@ -9,6 +9,7 @@ export class MyDurableObject extends DurableObject<Env> {
 	private intentionalClosures = new Set<WebSocket>();
 	private rematchRequests = new Set<string>();
 	private finishedWinner: string | null = null;
+	private pendingAttack: {attackId:string;attackerPlayerId:string;cardId:string;targetCardId:string|null} | null = null;
 	private turnPlayer = "player1";
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -154,6 +155,7 @@ export class MyDurableObject extends DurableObject<Env> {
 					this.rematchRequests.clear();
 					this.publicStates.clear();
 					this.finishedWinner = null;
+					this.pendingAttack = null;
 					this.turnPlayer = "player1";
 					await this.ctx.storage.put("roomState", {
 						publicStates: {},
@@ -237,6 +239,42 @@ export class MyDurableObject extends DurableObject<Env> {
 				return;
 			}
 
+
+			if (operation.action === "attack_declared") {
+				const attack = message as {attackId?:unknown;cardId?:unknown;targetCardId?:unknown};
+				if (playerId !== this.turnPlayer || this.sockets.size < 2 || this.pendingAttack) {
+					server.send(JSON.stringify({type:"error",message:"Attack cannot be declared now"}));
+					return;
+				}
+				if (typeof attack.attackId !== "string" || !attack.attackId || typeof attack.cardId !== "string" ||
+					(attack.targetCardId !== null && attack.targetCardId !== undefined && typeof attack.targetCardId !== "string")) {
+					server.send(JSON.stringify({type:"error",message:"Invalid attack declaration"}));
+					return;
+				}
+				this.pendingAttack = {attackId:attack.attackId,attackerPlayerId:playerId,cardId:attack.cardId,targetCardId:typeof attack.targetCardId === "string" ? attack.targetCardId : null};
+				const update = JSON.stringify({...message,playerId});
+				for (const [socket] of this.sockets) if (socket.readyState === WebSocket.OPEN) socket.send(update);
+				return;
+			}
+
+			if (operation.action === "attack_response") {
+				const response = message as {attackId?:unknown;damageOverride?:unknown};
+				const pending = this.pendingAttack;
+				if (!pending || response.attackId !== pending.attackId || playerId === pending.attackerPlayerId) {
+					server.send(JSON.stringify({type:"error",message:"Unexpected attack response"}));
+					return;
+				}
+				if (response.damageOverride !== null && response.damageOverride !== undefined &&
+					(typeof response.damageOverride !== "number" || !Number.isFinite(response.damageOverride) || response.damageOverride < 0)) {
+					server.send(JSON.stringify({type:"error",message:"Invalid attack damage override"}));
+					return;
+				}
+				const update = JSON.stringify({type:"operation",action:"attack_response",playerId,attackId:pending.attackId,damageOverride:typeof response.damageOverride === "number" ? response.damageOverride : null});
+				for (const [socket,socketPlayerId] of this.sockets) if (socketPlayerId === pending.attackerPlayerId && socket.readyState === WebSocket.OPEN) socket.send(update);
+				this.pendingAttack = null;
+				return;
+			}
+
 			if (operation.action === "move_card") {
 				const zone = (message as {zone?: unknown}).zone;
 				const dest = (message as {dest?: unknown}).dest;
@@ -311,6 +349,10 @@ export class MyDurableObject extends DurableObject<Env> {
 			}
 
 			if (operation.action === "end_turn") {
+				if (this.pendingAttack) {
+					server.send(JSON.stringify({type:"error",message:"Wait for the attack response before ending the turn"}));
+					return;
+				}
 				if (playerId !== this.turnPlayer) {
 					server.send(JSON.stringify({type:"error",message:"Not your turn"}));
 					return;
@@ -357,6 +399,7 @@ export class MyDurableObject extends DurableObject<Env> {
 		this.publicStates.clear();
 		this.reconnectingPlayers.clear();
 		this.rematchRequests.clear();
+		this.pendingAttack = null;
 		this.turnPlayer = "player1";
 		this.finishedWinner = null;
 		await this.ctx.storage.delete("roomState");
